@@ -1,0 +1,129 @@
+<?php
+
+class lib_log {
+    private static $instance = null;
+    private $ip = '';
+
+    private $debugPath = '';
+    private $tracePath = '';
+    private $warningPath = '';
+    private $fatalPath = '';
+    private $accessPath = '';
+
+    private $fileMap = [
+        'debug' => 'trace',
+        'trace' => 'trace',
+        'warning' => 'fatal',
+        'fatal' => 'fatal',
+        'access' => 'trace',
+    ];
+
+    private $rootDirLength = 0;
+
+    private function __construct() {
+        self::genLogid();
+        $this->ip = lib_ip::get();
+        $this->rootDirLength = strlen(ROOT_DIR) + 1;
+        if (!file_exists(LOG_DIR)) {
+            mkdir(LOG_DIR);
+        }
+        foreach ($this->fileMap as $key => $levelName) {
+            $this->{$key . 'Path'} = self::logFile($levelName);
+        }
+    }
+
+    /**
+     * 单例
+     * @return lib_log
+     */
+    static function getIns() {
+        if (null !== self::$instance) {
+            return self::$instance;
+        }
+        self::$instance = new self();
+        return self::$instance;
+    }
+
+    static function genLogid() {
+        $arr = gettimeofday();
+        $logId = (($arr['sec'] * 100000) + (int)($arr['usec'] / 10)) & 2147483647 | 2147483648;
+        define('LOG_ID', $logId);
+    }
+
+    static function logFile($logFile) : string {
+        return Eason::join(LOG_DIR, $logFile . '.log.' . date('Y_W'));
+    }
+
+    static function debug($name, $msg) {
+        if (IS_DEVELOP) {
+            if (is_array($msg)) {
+                $msg = print_r($msg, 1);
+            }
+            if (is_object($msg)) {
+                $msg = lib_string::encode($msg);
+            }
+            $instance = self::getIns();
+            $instance->Log('DEBUG', $name, $msg, $instance->debugPath);
+        }
+    }
+
+    static function warning($name, $msg) {
+        $instance = self::getIns();
+        $instance->Log('WARNING', $name, $msg, $instance->warningPath);
+    }
+
+    static function fatal($name, $msg) {
+        $instance = self::getIns();
+        $instance->Log('FATAL', $name, $msg, $instance->fatalPath);
+    }
+
+    static function trace($name, $msg) {
+        $instance = self::getIns();
+        $instance->Log('TRACE', $name, $msg, $instance->tracePath);
+    }
+
+    static function access($name, $msg) {
+        $instance = self::getIns();
+        $instance->LogMore('ACCESS', $name, $msg, $instance->accessPath);
+    }
+
+    private function LogMore($logLev, $name, $msg, $file) {
+        error_log(
+            sprintf(
+                "%s:%s [%s][logid:%s][%s]\n%s:%s\n",
+                $logLev,
+                date('Y-m-d H:i:s'),
+                $this->ip,
+                LOG_ID,
+                $_SERVER['HTTP_USER_AGENT'],
+                $name,
+                $msg
+            ),
+            3,
+            $file
+        );
+    }
+
+    /**
+     * @param $msg
+     * @param $file
+     * @return void
+     */
+    private function Log($logLev, $name, $msg, $file) {
+        $trace = debug_backtrace();
+        error_log(
+            sprintf(
+                "%s:%s logid[%s][%s:%s]\n%s:%s\n",
+                $logLev,
+                date('Y-m-d H:i:s'),
+                LOG_ID,
+                substr($trace[1]['file'], $this->rootDirLength),
+                $trace[1]['line'],
+                $name,
+                $msg
+            ),
+            3,
+            $file
+        );
+    }
+}
